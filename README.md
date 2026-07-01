@@ -1,6 +1,38 @@
 # tf-molecule-apigateway-lambda-authorizer-aws
 
-Terraform molecule (PlatformStackPulse). See the module documentation below.
+Terraform molecule (PlatformStackPulse) that provisions an **API Gateway REQUEST Lambda authorizer** and grants API Gateway permission to invoke the authorizer Lambda.
+
+## Features
+
+- Creates a **REQUEST-type** API Gateway Lambda authorizer wired to a REST API.
+- Grants the `lambda:InvokeFunction` permission so API Gateway can invoke the authorizer function (`apigateway.amazonaws.com` principal, scoped to `.../authorizers/*`).
+- Configurable **identity source** (defaults to `method.request.header.Authorization`).
+- Configurable **result-cache TTL** (defaults to 300s; set to `0` to disable caching).
+- Consistent naming, tagging, and `enabled` toggling via the shared [tf-label](https://github.com/PlatformStackPulse/tf-label) context.
+- Composed from pinned atom modules (`tf-atom-apigateway-authorizer-aws`, `tf-atom-lambda-permission-aws`) at fixed SHAs.
+
+## Usage
+
+```hcl
+module "authorizer" {
+  source = "git::https://github.com/PlatformStackPulse/tf-molecule-apigateway-lambda-authorizer-aws.git?ref=v1.0.0"
+
+  # tf-label context
+  namespace = "eg"
+  stage     = "prod"
+  name      = "api"
+
+  # Required wiring
+  rest_api_id    = aws_api_gateway_rest_api.this.id
+  authorizer_uri = aws_lambda_function.authorizer.invoke_arn
+  function_name  = aws_lambda_function.authorizer.function_name
+  execution_arn  = aws_api_gateway_rest_api.this.execution_arn
+
+  # Optional
+  identity_source = "method.request.header.Authorization"
+  ttl_in_seconds  = 300
+}
+```
 
 <!-- BEGIN_TF_DOCS -->
 ### Requirements
@@ -61,3 +93,22 @@ No resources.
 | <a name="output_authorizer_arn"></a> [authorizer\_arn](#output\_authorizer\_arn) | ARN of the created API Gateway Lambda authorizer |
 | <a name="output_authorizer_id"></a> [authorizer\_id](#output\_authorizer\_id) | ID of the created API Gateway Lambda authorizer |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+Unit tests use a mock AWS provider (no real AWS calls, no credentials) and run under `terraform test`. They assert on plan-known values — the tf-label `id` and input/default pass-throughs — since the module's computed outputs (`authorizer_id`, `authorizer_arn`) are unknown under a mock provider.
+
+```bash
+# Unit tests (mock provider)
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+
+# or via Makefile
+make test-unit
+```
+
+Integration tests (`tests/integration/`) run against real AWS and require credentials:
+
+```bash
+terraform test -test-directory=tests/integration
+```
